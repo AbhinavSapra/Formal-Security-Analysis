@@ -1,0 +1,76 @@
+(* 
+Protocol
+--------
+Consider the following protocol.
+            A -> B: {{ (pkA,{n}_pkB) }_pkB}_pkB
+            B -> A: {(pkB, n)}_pkA
+
+A sends to be a fresh nonce n, buried under three levels of encryption using the public key of B. She also adds her identity (via her public key) embedded in the second level of encryption. 
+
+B unlocks thrice to retrieve n, and sends it back to A, along with her own identity, encrypted in A's public key.
+*)
+
+(*
+Assume U and V are agents, whose secret keys are not known to the intruder. Assume U generates a fresh z and sends to V. z is leaked to the intruder by the following attack. U! means a message send by U, V! is a message send by V, ?V is a receive by V. skI is a secret key known to the intruder, and pkI is shorthand for pk(skI).  
+
+Attack
+--------
+                        
+    U actions                           V actions
+    U! : {{ (pkU,{z}_pkV) }_pkV}_pkV 
+                                        ?V : {{ (pkI, {{(pkU, {z}_pkV)}_pkV}_pkV) }_pkV}_pkV
+                                        V! : { (pkV, {(pkU, {z}_pkV)}_pkV) }_pkI
+
+                                        ?V : {{ (pkI, {(pkU,{z}_pkV)}_pkV) }_pkV}_pkV
+                                        V! : { (pkV, (pkU,{z}_pkV)) }_pkI
+
+                                        ?V : {{ (pkI,{z}_pkV) }_pkV}_pkV
+                                        V! : {(pkV, z)}_pkI
+*)
+
+type skey.
+type pkey.
+
+fun pk(skey) : pkey.
+fun aenc(bitstring, pkey): bitstring.
+
+reduc forall m: bitstring, k: skey; adec(aenc(m, pk(k)), k) = m.
+
+free c: channel.
+free n:bitstring[private].
+
+event evDoneA(bitstring, skey, pkey).
+event evDoneB(skey, pkey).
+event freshkey(skey). 
+
+axiom ska: skey, skb: skey; event(evDoneB(skb, pk(ska))) ==> ska <> skb. 
+
+query z:bitstring, ska:skey, skb:skey; attacker(n).
+
+
+
+let roleA(skA: skey, pkB: pkey) =
+  out(c,aenc(aenc((pk(skA),aenc(n,pkB)),pkB),pkB)); 
+  event evDoneA(n,skA,pkB);
+0.
+
+
+    
+let roleB(skB: skey) = 
+  in(c,y:bitstring);
+  let (y_1 :bitstring) = adec(y,skB) in
+  let (y_pk :pkey,y_2:bitstring) = (adec(y_1,skB)) in
+  let (y_3 :bitstring) = adec(y_2,skB) in 
+  out(c,aenc(y_3,y_pk));
+  event evDoneB(skB,y_pk);
+0.
+    
+process
+    new ska:skey;
+    new skb: skey;
+    event freshkey(ska);
+    event freshkey(skb); 
+    out(c, pk(ska));
+    out(c,pk(skb)); 
+    (!roleA(ska, pk(skb)))|
+    (!roleB(skb))  
